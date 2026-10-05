@@ -10,15 +10,31 @@ gives you that per-user list length with a real, checkable statistical
 guarantee behind it, not a guess.
 
 The technique is [conformal prediction](https://en.wikipedia.org/wiki/Conformal_prediction):
-well established for classification and regression, with mature,
+decades old (Vovk, Gammerman and Shafer, late 1990s/2000s), well
+established for classification and regression, with mature,
 widely-used libraries ([MAPIE](https://github.com/scikit-learn-contrib/MAPIE),
-[TorchCP](https://github.com/ml-stat-Sustech/TorchCP)). Applying it to
-ranking/recommendation specifically is much less settled: the papers
-that do it ([CPFT](https://arxiv.org/abs/2402.08976), a DCR paper) have
-no public code release anywhere (checked directly against both papers
-and GitHub, see "What this isn't" below). This project doesn't
-reproduce either of them. It extends a technique TorchCP already has for
-classification, [Adaptive Prediction Sets](https://proceedings.neurips.cc/paper/2020/file/244edd7e85dc81602b7615cd705545f5-Paper.pdf)
+[TorchCP](https://github.com/ml-stat-Sustech/TorchCP)).
+
+Applying it to ranking/recommendation specifically is *not* a new idea
+either: that line of work goes back almost a decade, starting with
+[Kagita et al.'s original Conformal Recommender System](https://www.sciencedirect.com/science/article/abs/pii/S0020025517306461)
+(2017) and continuing through [a conformal matrix-factorization
+recommender](https://www.researchgate.net/publication/324207596_Conformal_Matrix_Factorization_based_Recommender_System)
+(2018), [Kagita et al.'s inductive follow-up](https://www.sciencedirect.com/science/article/abs/pii/S0950705122005469)
+(2022), a [Berkeley paper giving ranking FDR-control guarantees on
+Yahoo! Learning-to-Rank and MS MARCO](https://arxiv.org/abs/2207.01609)
+(Angelopoulos, Krauth, Bates, Wang and Jordan, COPA 2023),
+[structured conformal inference for matrix completion](https://arxiv.org/pdf/2404.17561)
+(NeurIPS 2023), and up through [CPFT](https://arxiv.org/abs/2402.08976)
+and a DCR paper (both 2024). This project does not claim to be the
+first to apply conformal prediction to recommendation. What it found,
+checked directly against every one of those papers and against GitHub:
+none of them has a public code release (see "What this isn't" below).
+The gap this project fills is a code and reproducibility gap, not an
+idea gap.
+
+It extends a technique TorchCP already has for classification,
+[Adaptive Prediction Sets](https://proceedings.neurips.cc/paper/2020/file/244edd7e85dc81602b7615cd705545f5-Paper.pdf)
 (Romano et al., 2020), to ranking instead, since the math transfers
 directly: "which item will this user pick" is structurally the same
 decision as "which class is this image," just over a much bigger set of
@@ -159,11 +175,16 @@ by the same discipline rather than two different ad-hoc fixes.
 
 ## What this isn't
 
-- **Not a reproduction of CPFT or any specific recsys-conformal paper.**
-  Checked directly: CPFT's arXiv page lists no code, and a GitHub search
-  by exact paper title returns nothing. Could not reproduce code that
-  does not exist; this is a separately-motivated application of an
-  already-established technique (APS) instead.
+- **Not a reproduction of CPFT, the Berkeley FDR-control paper, or any
+  specific recsys-conformal paper, and not a claim to be first.**
+  Conformal prediction applied to recommendation is itself a near-decade-old
+  line of work (Kagita et al. 2017 onward, see above). Checked directly
+  against every paper in that lineage, by arXiv/publisher page and by
+  GitHub search on the exact paper title: none has a public code
+  release. Could not reproduce code that does not exist; this is a
+  separately-motivated application of an already-established technique
+  (APS) instead, built to be a working, open implementation where the
+  existing papers have none.
 - **Not merged into TorchCP (yet).** Built to match their module
   conventions on purpose, as a first step toward a real contribution,
   but no issue was opened or PR submitted as of this commit.
