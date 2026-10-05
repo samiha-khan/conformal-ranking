@@ -33,10 +33,13 @@ pip install torch pytest
 # Correctness tests on synthetic data (no download needed):
 PYTHONPATH=. pytest tests/ -v
 
-# Real demo on MovieLens-100K:
+# Real demo on MovieLens-100K (matrix-factorization baseline):
 curl -L -o ml-100k.zip https://files.grouplens.org/datasets/movielens/ml-100k.zip
 unzip ml-100k.zip
 python examples/movielens_demo.py --data-dir ml-100k
+
+# A stronger model on the same task (SASRec, real chronological sequences):
+python examples/sasrec_movielens_demo.py --data-dir ml-100k
 ```
 
 ## What it actually does
@@ -103,6 +106,57 @@ the bottleneck here, not the calibration method.** A stronger retrieval
 model would narrow this gap; this project's job was to find and report
 that honestly, not to paper over it with a better model it didn't build.
 
+## A stronger model: SASRec, and a lesson in not trusting the first run
+
+The matrix-factorization baseline above is deliberately simple. The
+actual conformal-for-recsys literature this project extends (CPFT, DCR)
+builds on SASRec (Kang & McAuley, 2018): self-attention over a user's
+real chronological interaction history, not an unordered rating matrix.
+`conformal_ranking/sasrec.py` implements it directly from the original
+paper's architecture (neither CPFT nor DCR has public code to follow
+instead), and `examples/sasrec_movielens_demo.py` reruns the identical
+two-stage conformal evaluation on top of it, using MovieLens-100K's real
+timestamps to build real per-user sequences and the paper's own
+leave-one-out protocol (last interaction held out as the target).
+
+**First run, 15 epochs:** retrieval-miss rate 69% (328/472), statistically
+indistinguishable from the matrix-factorization baseline's 68% (157/230).
+That result was not trusted. Train loss was still visibly dropping
+(13.56 to 6.32 over 15 epochs), which is a sign of an undertrained model,
+the same shape of problem the matrix-factorization baseline had in its
+own first, broken run (see above). Rather than report "SASRec doesn't
+help" from a model that hadn't finished learning, training was extended.
+
+**Second run, 80 epochs** (same data, same evaluation, only the training
+budget changed):
+
+```
+=== Full catalog (1,682 movies) ===
+  Coverage: 88.8%  |  Average list size: 524 of 1,682 movies
+
+=== Two-stage: top-100 retrieval candidates, then calibrated ===
+  Coverage: 91.8%  |  Average list size: 84.0 of 100 candidates
+  (229 of 472 eval users' true movie wasn't in their own top-100)
+```
+
+A real, earned improvement: the retrieval-miss rate drops from 68%
+(matrix factorization) to 49% (properly-trained SASRec), and the
+full-catalog set size shrinks from 724 to 524 movies for the same 90%
+target. Train loss was still (very slowly) decreasing at epoch 80
+(5.55 to 5.52 over the last 5 epochs, against a 7.4-point drop over the
+first 20), so there's likely a small amount of further headroom with
+more training, but returns are clearly diminishing: this is close to
+converged for a model this size on a dataset this small, not a case of
+"just train it longer and it'll keep improving at the same rate."
+
+The honest takeaway isn't "SASRec is better" on its own; it's that the
+*first* number from a model, SASRec or otherwise, is a hypothesis, not
+a result, until there's a convergence check behind it. Two different
+models produced the same "undertrained-looking" plateau in this
+project's history, for different underlying reasons (15 full-batch
+steps vs. 15 real epochs that still weren't enough), and both got caught
+by the same discipline rather than two different ad-hoc fixes.
+
 ## What this isn't
 
 - **Not a reproduction of CPFT or any specific recsys-conformal paper.**
@@ -113,12 +167,15 @@ that honestly, not to paper over it with a better model it didn't build.
 - **Not merged into TorchCP (yet).** Built to match their module
   conventions on purpose, as a first step toward a real contribution,
   but no issue was opened or PR submitted as of this commit.
-- **Not a strong recommender.** The matrix-factorization model here is
-  deliberately simple (a learned vector per user and movie, dot
-  product, nothing fancier). The point of this project is the
-  calibration layer on top of a recommender's scores, not the
-  recommender itself. The retrieval-miss finding above is really a
-  property of this simple baseline, not of the calibration method.
+- **Not a tuned, state-of-the-art recommender.** SASRec at 80 epochs is
+  a real improvement over the matrix-factorization baseline, not a
+  maximally-optimized one: default hyperparameters, no learning-rate
+  schedule, no hyperparameter search. The point of this project is the
+  calibration layer on top of a recommender's scores, not pushing
+  recommender accuracy as far as it could go. Both models are provided
+  specifically to make the calibration layer's behavior comparable
+  across a weak and a stronger base model, not as a competing claim
+  about which recommender architecture is best.
 
 ## Project layout
 
@@ -126,19 +183,29 @@ that honestly, not to paper over it with a better model it didn't build.
 conformal_ranking/
   score/base.py, aps.py       the nonconformity score
   predictor/split.py          calibration + prediction-set generation
+  sasrec.py                   SASRec (Kang & McAuley, 2018)
   utils.py                    the finite-sample-corrected quantile helper
                                (same formula as torchcp.utils.common,
                                reimplemented so this has no torchcp dependency yet)
-tests/test_aps_split.py       6 correctness tests on synthetic data
-examples/movielens_demo.py    real demo on MovieLens-100K
+tests/
+  test_aps_split.py           6 correctness tests on synthetic data
+  test_sasrec.py               4 tests, including a causal-masking check
+                               that caught a real NaN bug before training
+examples/
+  movielens_demo.py           matrix-factorization baseline on MovieLens-100K
+  sasrec_movielens_demo.py    SASRec on the same task, real chronological
+                               sequences, same two-stage evaluation
 ```
 
 ## Status
 
-Core method implemented and tested on synthetic data. Real-data demo
-built, run, and debugged (caught and fixed an undertrained-model bug
-before trusting its output). Not yet started: opening a scoping
-discussion with TorchCP's maintainers before proposing this as a PR.
-A maintainer may already have plans for this, or want a different API
-shape than what's built here, and finding that out before writing more
-code is cheaper than finding it out after.
+Core method implemented and tested on synthetic data (10 tests total).
+Two real-data demos built, run, and debugged: a matrix-factorization
+baseline (caught and fixed an undertrained-model bug) and SASRec (caught
+a real NaN bug in causal attention masking, then an undertrained first
+training run, before trusting a comparison between the two models).
+
+Not yet started: opening a scoping discussion with TorchCP's maintainers
+before proposing this as a PR. A maintainer may already have plans for
+this, or want a different API shape than what's built here, and finding
+that out before writing more code is cheaper than finding it out after.
